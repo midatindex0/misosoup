@@ -67,7 +67,6 @@ fn media_codecs() -> Vec<RtpCodecCapability> {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct QueryParameters {
     user: String,
 }
@@ -114,7 +113,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(vc_registry.clone())
             .route("/ws", web::get().to(ws_index))
     })
-    .bind("0.0.0.0:3001")?
+    .bind("0.0.0.0:4002")?
     .run()
     .await
 }

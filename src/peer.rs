@@ -3,7 +3,7 @@ use std::{collections::HashMap, net::Ipv4Addr};
 use actix::{Actor, ActorContext, AsyncContext, Handler, StreamHandler};
 use actix_web_actors::ws;
 use event_listener_primitives::HandlerId;
-use mediasoup::prelude::*;
+use mediasoup::{data_structures::SocketFlags, prelude::*};
 use serde::{Deserialize, Serialize};
 
 use crate::{message::*, vc::Vc};
@@ -38,8 +38,12 @@ impl PeerConnection {
             WebRtcTransportOptions::new(WebRtcTransportListenInfos::new(ListenInfo {
                 protocol: Protocol::Udp,
                 ip: std::net::IpAddr::V4(Ipv4Addr::LOCALHOST),
-                announced_ip: None,
-                port: None,
+                port: Some(40001),
+                announced_address: None,
+                flags: Some(SocketFlags {
+                    ipv6_only: false,
+                    udp_reuse_port: true,
+                }),
                 send_buffer_size: None,
                 recv_buffer_size: None,
             }));
