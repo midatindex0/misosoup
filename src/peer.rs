@@ -37,9 +37,9 @@ impl PeerConnection {
         let transport_options =
             WebRtcTransportOptions::new(WebRtcTransportListenInfos::new(ListenInfo {
                 protocol: Protocol::Udp,
-                ip: std::net::IpAddr::V4(Ipv4Addr::LOCALHOST),
+                ip: std::net::IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
                 port: None,
-                announced_address: None,
+                announced_address: Some("172.105.40.85".into()),
                 flags: Some(SocketFlags {
                     ipv6_only: false,
                     udp_reuse_port: true,
