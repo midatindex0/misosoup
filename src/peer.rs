@@ -1,9 +1,12 @@
-use std::{collections::HashMap, net::Ipv4Addr};
+use std::{
+    collections::HashMap,
+    net::{IpAddr, Ipv4Addr},
+};
 
 use actix::{Actor, ActorContext, AsyncContext, Handler, StreamHandler};
 use actix_web_actors::ws;
 use event_listener_primitives::HandlerId;
-use mediasoup::{data_structures::SocketFlags, prelude::*};
+use mediasoup::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{message::*, vc::Vc};
@@ -39,11 +42,7 @@ impl PeerConnection {
                 protocol: Protocol::Udp,
                 ip: std::net::IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
                 port: None,
-                announced_address: Some("172.105.40.85".into()),
-                flags: Some(SocketFlags {
-                    ipv6_only: false,
-                    udp_reuse_port: true,
-                }),
+                announced_ip: Some(IpAddr::V4(Ipv4Addr::new(172, 105, 40, 85))),
                 send_buffer_size: None,
                 recv_buffer_size: None,
             }));
