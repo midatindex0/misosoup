@@ -38,7 +38,7 @@ impl PeerConnection {
             WebRtcTransportOptions::new(WebRtcTransportListenInfos::new(ListenInfo {
                 protocol: Protocol::Udp,
                 ip: std::net::IpAddr::V4(Ipv4Addr::LOCALHOST),
-                port: Some(40001),
+                port: None,
                 announced_address: None,
                 flags: Some(SocketFlags {
                     ipv6_only: false,
