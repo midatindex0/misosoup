@@ -8,17 +8,20 @@ use mediasoup::{
 use parking_lot::Mutex;
 use serde::Serialize;
 
-use crate::peer::PeerId;
+use crate::{
+    message::{Notification, NotificationType},
+    peer::PeerId,
+};
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Hash)]
 pub struct VcId(pub String);
 
 #[derive(Default)]
 struct Handlers {
-    peer_join: Bag<Arc<dyn Fn(&PeerId) + Send + Sync>, PeerId>,
-    peer_leave: Bag<Arc<dyn Fn(&PeerId) + Send + Sync>, PeerId>,
+    notification: Bag<Arc<dyn Fn(&Notification) + Send + Sync>, Notification>,
     producer_add: Bag<Arc<dyn Fn(&PeerId, &Producer) + Send + Sync>, PeerId, Producer>,
     producer_remove: Bag<Arc<dyn Fn(&PeerId, &ProducerId) + Send + Sync>, PeerId, ProducerId>,
+    echo: Bag<Arc<dyn Fn(&PeerId, &String) + Send + Sync>, PeerId, String>,
     close: BagOnce<Box<dyn FnOnce() + Send>>,
 }
 
@@ -77,7 +80,7 @@ impl Vc {
 
         Ok(Self {
             inner: Arc::new(VcInner {
-                id: id,
+                id,
                 router,
                 handlers: Handlers::default(),
                 clients: Mutex::default(),
@@ -100,7 +103,30 @@ impl Vc {
             .entry(peer_id.clone())
             .or_default();
 
-        self.inner.handlers.peer_join.call_simple(&peer_id);
+        self.inner
+            .handlers
+            .notification
+            .call_simple(&Notification::PeerJoin { peer_id });
+    }
+
+    pub fn echo(&self, peer_id: &PeerId, text: &String) {
+        self.inner.handlers.echo.call_simple(peer_id, text);
+    }
+
+    pub fn notify(&self, peer_id: &PeerId, notification: &NotificationType) {
+        let notification = match notification {
+            NotificationType::Loading => Notification::Loading {
+                peer_id: peer_id.clone(),
+            },
+            NotificationType::Playing => Notification::Playing {
+                peer_id: peer_id.clone(),
+            },
+            NotificationType::Idle => Notification::Idle {
+                peer_id: peer_id.clone(),
+            },
+        };
+
+        self.inner.handlers.notification.call_simple(&notification);
     }
 
     pub fn add_producer(&self, peer_id: PeerId, producer: Producer) {
@@ -128,7 +154,23 @@ impl Vc {
                 .call_simple(peer_id, producer_id);
         }
 
-        self.inner.handlers.peer_leave.call_simple(peer_id);
+        self.inner
+            .handlers
+            .notification
+            .call_simple(&Notification::PeerLeave {
+                peer_id: peer_id.clone(),
+            });
+    }
+
+    pub fn remove_producer(&self, peer_id: &PeerId, producer_id: &ProducerId) {
+        if let Some(producers) = self.inner.clients.lock().get_mut(peer_id) {
+            producers.retain(|p| &p.id() != producer_id);
+        }
+
+        self.inner
+            .handlers
+            .producer_remove
+            .call_simple(peer_id, producer_id);
     }
 
     pub fn get_all_producers(&self) -> Vec<(PeerId, ProducerId)> {
@@ -153,12 +195,11 @@ impl Vc {
             .collect()
     }
 
-    pub fn on_peer_join<F: Fn(&PeerId) + Send + Sync + 'static>(&self, callback: F) -> HandlerId {
-        self.inner.handlers.peer_join.add(Arc::new(callback))
-    }
-
-    pub fn on_peer_leave<F: Fn(&PeerId) + Send + Sync + 'static>(&self, callback: F) -> HandlerId {
-        self.inner.handlers.peer_leave.add(Arc::new(callback))
+    pub fn on_notification<F: Fn(&Notification) + Send + Sync + 'static>(
+        &self,
+        callback: F,
+    ) -> HandlerId {
+        self.inner.handlers.notification.add(Arc::new(callback))
     }
 
     pub fn on_producer_add<F: Fn(&PeerId, &Producer) + Send + Sync + 'static>(
@@ -173,6 +214,13 @@ impl Vc {
         callback: F,
     ) -> HandlerId {
         self.inner.handlers.producer_remove.add(Arc::new(callback))
+    }
+
+    pub fn on_echo<F: Fn(&PeerId, &String) + Send + Sync + 'static>(
+        &self,
+        callback: F,
+    ) -> HandlerId {
+        self.inner.handlers.echo.add(Arc::new(callback))
     }
 
     pub fn on_close<F: FnOnce() + Send + 'static>(&self, callback: F) -> HandlerId {

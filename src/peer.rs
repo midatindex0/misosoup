@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    net::{IpAddr, Ipv4Addr},
-};
+use std::collections::HashMap;
 
 use actix::{Actor, ActorContext, AsyncContext, Handler, StreamHandler};
 use actix_web_actors::ws;
@@ -40,9 +37,14 @@ impl PeerConnection {
         let transport_options =
             WebRtcTransportOptions::new(WebRtcTransportListenInfos::new(ListenInfo {
                 protocol: Protocol::Udp,
-                ip: std::net::IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+                ip: std::env::var("IP")
+                    .expect("IP environment variable not set")
+                    .parse()
+                    .expect("Invalid ip"),
                 port: None,
-                announced_ip: Some(IpAddr::V4(Ipv4Addr::new(172, 105, 40, 85))),
+                announced_ip: std::env::var("ANNOUNCED_IP")
+                    .ok()
+                    .map(|x| x.parse().expect("Invalid announced ip")),
                 send_buffer_size: None,
                 recv_buffer_size: None,
             }));
@@ -97,35 +99,36 @@ impl Actor for PeerConnection {
         address.do_send(server_init_message);
 
         for peer_id in self.vc.get_all_peers() {
-            address.do_send(S2C::PeerJoin { peer_id });
+            address.do_send(S2C::Notification(Notification::PeerJoin { peer_id }));
         }
 
         self.vc.add_peer(self.id.clone());
 
-        self.attached_handlers.push(self.vc.on_peer_join({
+        self.attached_handlers.push(self.vc.on_notification({
             let own_peer_id = self.id.clone();
             let address = address.clone();
 
-            move |peer_id| {
-                if &own_peer_id == peer_id {
-                    return;
+            move |notification| {
+                if let Some(peer_id) = notification.associated_peer_id() {
+                    if peer_id == &own_peer_id {
+                        return;
+                    }
                 }
-                address.do_send(S2C::PeerJoin {
-                    peer_id: peer_id.clone(),
-                });
+                address.do_send(S2C::Notification(notification.clone()));
             }
         }));
 
-        self.attached_handlers.push(self.vc.on_peer_leave({
+        self.attached_handlers.push(self.vc.on_echo({
             let own_peer_id = self.id.clone();
             let address = address.clone();
 
-            move |peer_id| {
+            move |peer_id, text| {
                 if &own_peer_id == peer_id {
                     return;
                 }
-                address.do_send(S2C::PeerLeave {
+                address.do_send(S2C::Echo {
                     peer_id: peer_id.clone(),
+                    text: text.clone(),
                 });
             }
         }));
@@ -256,6 +259,8 @@ impl Handler<C2S> for PeerConnection {
                     }
                 });
             }
+            C2S::ProducerRemove { producer_id } => self.vc.remove_producer(&self.id, &producer_id),
+
             C2S::ConnectConsumerTransport { dtls_parameters } => {
                 let peer_id = self.id.clone();
                 let address = ctx.address();
@@ -344,6 +349,8 @@ impl Handler<C2S> for PeerConnection {
                     });
                 }
             }
+            C2S::Echo { text } => self.vc.echo(&self.id, &text),
+            C2S::Notification { kind } => self.vc.notify(&self.id, &kind),
         }
     }
 }
